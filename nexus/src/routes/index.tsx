@@ -65,16 +65,15 @@ import {
   createEvent,
   createRecurringEvents,
   deleteEvent,
-  updateEvent,
   postponeEvent,
   postponeAllEvents,
   toggleEvent,
   type CalendarEvent,
   type EventPriority,
 } from '@/lib/events'
-import { createAllDayEvent, deleteAllDayEvent, updateAllDayEvent, type AllDayEvent } from '@/lib/all-day-events'
+import { createAllDayEvent, deleteAllDayEvent, type AllDayEvent } from '@/lib/all-day-events'
 import { EventModal, type EventModalState } from '@/components/calendar/EventModal'
-import { combineZonedDayAndTime, formatTz, nowInTz, toTz, ymd, addDays } from '@/lib/tz'
+import { combineZonedDayAndTime, formatTz, toTz, ymd } from '@/lib/tz'
 
 export const Route = createFileRoute('/')({
   component: HomePage,
@@ -478,7 +477,7 @@ function HomePage() {
             </div>
 
             <div className="lg:col-span-2 flex flex-col gap-6">
-              <NextEventCard event={nextEvent} allDayToday={todayAllDay[0]} now={rawNow} />
+              <NextEventCard event={nextEvent} allDayToday={todayAllDay[0]} />
               <GoalsCard goals={goals} />
             </div>
           </div>
@@ -980,11 +979,9 @@ function AddItemForm({ todayStr }: { todayStr: string }) {
 function NextEventCard({
   event,
   allDayToday,
-  now,
 }: {
   event: CalendarEvent | undefined
   allDayToday: AllDayEvent | undefined
-  now: Date
 }) {
   const rawNow = useNow(60_000)
 
