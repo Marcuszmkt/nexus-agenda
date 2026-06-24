@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { Link, useRouterState } from '@tanstack/react-router'
 import { Calendar as CalendarIcon, Home as HomeIcon, Clock, Zap } from 'lucide-react'
 import { ThemeToggle } from '@/components/theme-toggle'
+import { HistoryButton } from '@/components/history-button'
 import { TZ } from '@/lib/tz'
 
 export function AppShell({
@@ -52,6 +53,8 @@ export function AppShell({
         <div className="flex-1" />
 
         {rightHeader}
+
+        <HistoryButton />
 
         <div className="hidden md:flex items-center gap-1.5 text-xs text-muted-foreground">
           <Clock className="size-3.5" />

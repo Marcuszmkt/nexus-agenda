@@ -47,7 +47,6 @@ import {
   createTask,
   createRecurringTasks,
   markMissedTasks,
-  retryMissedTask,
   type Task,
   type TaskPriority,
 } from '@/lib/tasks'
@@ -182,8 +181,6 @@ function HomePage() {
   const nextEvent = upcomingEvents[0]
   const completedGoals = goals.filter((g) => g.completed).length
 
-  const missedTasks = useMemo(() => tasks.filter((t) => t.missed), [tasks])
-
   useEffect(() => {
     const overdue = tasks.filter(
       (t) => t.scheduled_date < todayStr && !t.completed && !t.missed,
@@ -258,7 +255,6 @@ function HomePage() {
   )
   const showBanner = hour >= 20 && pendingToday > 0
   const [bannerDismissed, setBannerDismissed] = useState(false)
-  const [missedOpen, setMissedOpen] = useState(false)
 
   async function handlePostponeAll() {
     try {
@@ -303,63 +299,14 @@ function HomePage() {
             </div>
           )}
 
-          <section className="flex items-start justify-between gap-4">
-            <div>
-              <h2 className="text-4xl sm:text-5xl font-bold tracking-tight flex items-center gap-3">
-                {greeting.text} <span>{greeting.emoji}</span>
-              </h2>
-              <p className="mt-2 text-sm text-muted-foreground first-letter:uppercase">
-                {formatTz(now, "EEEE, d 'de' MMMM 'de' yyyy")}
-              </p>
-            </div>
-            {missedTasks.length > 0 && (
-              <button
-                type="button"
-                onClick={() => setMissedOpen(true)}
-                className="shrink-0 inline-flex items-center gap-2 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-500/20 transition-colors"
-              >
-                <AlertTriangle className="size-4" />
-                {missedTasks.length} não cumprida{missedTasks.length !== 1 ? 's' : ''}
-              </button>
-            )}
+          <section>
+            <h2 className="text-4xl sm:text-5xl font-bold tracking-tight flex items-center gap-3">
+              {greeting.text} <span>{greeting.emoji}</span>
+            </h2>
+            <p className="mt-2 text-sm text-muted-foreground first-letter:uppercase">
+              {formatTz(now, "EEEE, d 'de' MMMM 'de' yyyy")}
+            </p>
           </section>
-
-          <Dialog open={missedOpen} onOpenChange={setMissedOpen}>
-            <DialogContent className="max-w-lg">
-              <DialogHeader>
-                <DialogTitle className="flex items-center gap-2 text-rose-600 dark:text-rose-400">
-                  <AlertTriangle className="size-5" /> Tarefas não cumpridas
-                </DialogTitle>
-              </DialogHeader>
-              <ul className="flex flex-col gap-2 max-h-[60vh] overflow-y-auto pr-1">
-                {missedTasks.map((t) => (
-                  <li key={t.id} className="flex items-center gap-3 rounded-xl bg-rose-500/10 border border-rose-500/20 px-3 py-2.5">
-                    <AlertTriangle className="size-4 text-rose-500 shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{t.title}</p>
-                      {t.missed_at && (
-                        <p className="text-xs text-rose-500/80 mt-0.5">
-                          Era para {formatTz(new Date(`${t.missed_at}T12:00:00Z`), "d 'de' MMMM")}
-                        </p>
-                      )}
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="shrink-0 text-xs h-7 border-rose-500/30 text-rose-600 hover:bg-rose-500/10 gap-1"
-                      onClick={() =>
-                        retryMissedTask(t, todayStr)
-                          .then(() => toast.success('Tarefa recriada para hoje'))
-                          .catch(() => toast.error('Erro ao recriar'))
-                      }
-                    >
-                      <RefreshCw className="size-3" /> Refazer
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            </DialogContent>
-          </Dialog>
 
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
             <div className="lg:col-span-3 flex flex-col gap-6">
