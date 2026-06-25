@@ -198,7 +198,7 @@ function HomePage() {
   const timelineItems: TimelineItem[] = useMemo(() => {
     const items: TimelineItem[] = []
     for (const t of tasks) {
-      if (t.missed) continue
+      if (t.missed || (!t.completed && t.scheduled_date < todayStr)) continue
       if (t.scheduled_date < range.from || t.scheduled_date > range.to) continue
       const time = t.scheduled_time ? t.scheduled_time.slice(0, 5) : null
       items.push({
@@ -235,7 +235,7 @@ function HomePage() {
       return a.sortKey.localeCompare(b.sortKey)
     })
     return items
-  }, [tasks, events, allDayEvents, range])
+  }, [tasks, events, allDayEvents, range, todayStr])
 
   const grouped = useMemo(() => {
     const map = new Map<string, TimelineItem[]>()

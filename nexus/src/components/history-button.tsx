@@ -18,7 +18,10 @@ export function HistoryButton() {
 
   const todayStr = ymd(toTz(new Date()))
 
-  const missedTasks = useMemo(() => tasks.filter((t) => t.missed), [tasks])
+  const missedTasks = useMemo(
+    () => tasks.filter((t) => !t.completed && (t.missed || t.scheduled_date < todayStr)),
+    [tasks, todayStr],
+  )
   const missedEvents = useMemo(
     () => events.filter((ev) => !ev.completed && formatTz(ev.end, 'yyyy-MM-dd') < todayStr),
     [events, todayStr],
@@ -58,7 +61,7 @@ export function HistoryButton() {
       </button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg overflow-hidden">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-rose-600 dark:text-rose-400">
               <AlertTriangle className="size-5" /> Tarefas perdidas
@@ -86,51 +89,57 @@ export function HistoryButton() {
                   Nenhum item perdido.
                 </p>
               ) : (
-                <ul className="flex flex-col gap-2 max-h-[60vh] overflow-y-auto pr-1 mt-2">
+                <ul className="flex flex-col gap-2 max-h-[60vh] overflow-y-auto mt-2">
                   {missedTasks.map((t) => (
                     <li
                       key={t.id}
-                      className="flex items-center gap-3 rounded-xl bg-rose-500/10 border border-rose-500/20 px-3 py-2.5"
+                      className="flex flex-col gap-1.5 rounded-xl bg-rose-500/10 border border-rose-500/20 px-3 py-2.5"
                     >
-                      <AlertTriangle className="size-4 text-rose-500 shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{t.title}</p>
-                        <p className="text-xs text-rose-500/80 mt-0.5 flex items-center gap-1.5">
-                          <span className="text-[10px] font-semibold uppercase tracking-wide bg-primary/10 text-primary px-1.5 py-0.5 rounded">
-                            Tarefa
-                          </span>
-                          {t.missed_at &&
-                            `Era para ${formatTz(new Date(`${t.missed_at}T12:00:00Z`), "d 'de' MMMM")}`}
-                        </p>
+                      <div className="flex items-start gap-2">
+                        <AlertTriangle className="size-4 text-rose-500 shrink-0 mt-0.5" />
+                        <p className="text-sm font-medium leading-snug">{t.title}</p>
                       </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="shrink-0 text-xs h-7 border-rose-500/30 text-rose-600 hover:bg-rose-500/10 gap-1"
-                        onClick={() =>
-                          retryMissedTask(t, todayStr)
-                            .then(() => toast.success('Tarefa recriada para hoje'))
-                            .catch(() => toast.error('Erro ao recriar'))
-                        }
-                      >
-                        <RefreshCw className="size-3" /> Refazer
-                      </Button>
+                      <div className="flex items-center gap-2 pl-6">
+                        <span className="text-[10px] font-semibold uppercase tracking-wide bg-primary/10 text-primary px-1.5 py-0.5 rounded">
+                          Tarefa
+                        </span>
+                        {t.missed_at && (
+                          <span className="text-xs text-rose-500/80">
+                            {formatTz(new Date(`${t.missed_at}T12:00:00Z`), "d 'de' MMMM")}
+                          </span>
+                        )}
+                        <div className="flex-1" />
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-xs h-7 border-rose-500/30 text-rose-600 hover:bg-rose-500/10 gap-1"
+                          onClick={() =>
+                            retryMissedTask(t, todayStr)
+                              .then(() => toast.success('Tarefa recriada para hoje'))
+                              .catch(() => toast.error('Erro ao recriar'))
+                          }
+                        >
+                          <RefreshCw className="size-3" /> Refazer
+                        </Button>
+                      </div>
                     </li>
                   ))}
                   {missedEvents.map((ev) => (
                     <li
                       key={ev.id}
-                      className="flex items-center gap-3 rounded-xl bg-rose-500/10 border border-rose-500/20 px-3 py-2.5"
+                      className="flex flex-col gap-1.5 rounded-xl bg-rose-500/10 border border-rose-500/20 px-3 py-2.5"
                     >
-                      <AlertTriangle className="size-4 text-rose-500 shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{ev.title}</p>
-                        <p className="text-xs text-rose-500/80 mt-0.5 flex items-center gap-1.5">
-                          <span className="text-[10px] font-semibold uppercase tracking-wide bg-blue-500/10 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded">
-                            Evento
-                          </span>
+                      <div className="flex items-start gap-2">
+                        <AlertTriangle className="size-4 text-rose-500 shrink-0 mt-0.5" />
+                        <p className="text-sm font-medium leading-snug">{ev.title}</p>
+                      </div>
+                      <div className="flex items-center gap-2 pl-6">
+                        <span className="text-[10px] font-semibold uppercase tracking-wide bg-blue-500/10 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded">
+                          Evento
+                        </span>
+                        <span className="text-xs text-rose-500/80">
                           {formatTz(ev.start, "d 'de' MMMM")}
-                        </p>
+                        </span>
                       </div>
                     </li>
                   ))}
@@ -144,45 +153,50 @@ export function HistoryButton() {
                   Nenhum item concluído ainda.
                 </p>
               ) : (
-                <ul className="flex flex-col gap-2 max-h-[60vh] overflow-y-auto pr-1 mt-2">
+                <ul className="flex flex-col gap-2 max-h-[60vh] overflow-y-auto mt-2">
                   {completedGoals.map((g) => (
                     <li
                       key={g.id}
-                      className="flex items-center gap-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 px-3 py-2.5"
+                      className="flex flex-col gap-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 px-3 py-2.5"
                     >
-                      <Trophy className="size-4 text-amber-500 shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{g.title}</p>
-                        <p className="text-xs text-emerald-600/80 dark:text-emerald-400/80 mt-0.5 flex items-center gap-1.5">
-                          <span className="text-[10px] font-semibold uppercase tracking-wide bg-amber-500/10 text-amber-600 dark:text-amber-400 px-1.5 py-0.5 rounded">
-                            Meta
-                          </span>
-                          {g.completed_at &&
-                            formatTz(new Date(g.completed_at), "d 'de' MMMM 'de' yyyy")}
-                        </p>
+                      <div className="flex items-start gap-2">
+                        <Trophy className="size-4 text-amber-500 shrink-0 mt-0.5" />
+                        <p className="text-sm font-medium leading-snug">{g.title}</p>
                       </div>
-                      <CheckCircle2 className="size-4 text-emerald-500 shrink-0" />
+                      <div className="flex items-center gap-2 pl-6">
+                        <span className="text-[10px] font-semibold uppercase tracking-wide bg-amber-500/10 text-amber-600 dark:text-amber-400 px-1.5 py-0.5 rounded">
+                          Meta
+                        </span>
+                        {g.completed_at && (
+                          <span className="text-xs text-emerald-600/80 dark:text-emerald-400/80">
+                            {formatTz(new Date(g.completed_at), "d 'de' MMMM 'de' yyyy")}
+                          </span>
+                        )}
+                        <CheckCircle2 className="size-4 text-emerald-500 ml-auto" />
+                      </div>
                     </li>
                   ))}
                   {completedTasks.map((t) => (
                     <li
                       key={t.id}
-                      className="flex items-center gap-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 px-3 py-2.5"
+                      className="flex flex-col gap-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 px-3 py-2.5"
                     >
-                      <CheckCircle2 className="size-4 text-emerald-500 shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium line-through opacity-70 truncate">
+                      <div className="flex items-start gap-2">
+                        <CheckCircle2 className="size-4 text-emerald-500 shrink-0 mt-0.5" />
+                        <p className="text-sm font-medium line-through opacity-70 leading-snug">
                           {t.title}
                         </p>
-                        <p className="text-xs text-emerald-600/80 dark:text-emerald-400/80 mt-0.5 flex items-center gap-1.5">
-                          <span className="text-[10px] font-semibold uppercase tracking-wide bg-primary/10 text-primary px-1.5 py-0.5 rounded">
-                            Tarefa
-                          </span>
+                      </div>
+                      <div className="flex items-center gap-2 pl-6">
+                        <span className="text-[10px] font-semibold uppercase tracking-wide bg-primary/10 text-primary px-1.5 py-0.5 rounded">
+                          Tarefa
+                        </span>
+                        <span className="text-xs text-emerald-600/80 dark:text-emerald-400/80">
                           {formatTz(
                             new Date(`${t.scheduled_date}T12:00:00Z`),
                             "d 'de' MMMM 'de' yyyy",
                           )}
-                        </p>
+                        </span>
                       </div>
                     </li>
                   ))}

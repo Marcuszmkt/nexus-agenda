@@ -121,6 +121,7 @@ export async function retryMissedTask(task: Task, scheduledDate: string): Promis
     priority: task.priority,
   })
   if (error) throw error
+  await supabase.from('tasks').delete().eq('id', task.id)
   queryClient.invalidateQueries({ queryKey: ['tasks'] })
 }
 
