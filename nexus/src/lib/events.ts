@@ -197,7 +197,8 @@ function generateDates(
       current = addDays(current, 1)
     } else {
       results.push(ymd(current))
-      current = new Date(current.getFullYear(), current.getMonth() + 1, current.getDate())
+      const lastDayOfNext = new Date(current.getFullYear(), current.getMonth() + 2, 0).getDate()
+      current = new Date(current.getFullYear(), current.getMonth() + 1, Math.min(sd, lastDayOfNext))
     }
   }
   return results

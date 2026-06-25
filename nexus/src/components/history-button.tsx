@@ -7,7 +7,7 @@ import { useTasks } from '@/hooks/use-tasks'
 import { useGoals } from '@/hooks/use-goals'
 import { useEvents } from '@/hooks/use-events'
 import { retryMissedTask } from '@/lib/tasks'
-import { formatTz, toTz, ymd } from '@/lib/tz'
+import { formatTz, toTz, ymd, weekEndOf } from '@/lib/tz'
 import { toast } from 'sonner'
 
 export function HistoryButton() {
@@ -16,10 +16,17 @@ export function HistoryButton() {
   const { data: goals = [] } = useGoals(2026)
   const { data: events = [] } = useEvents()
 
-  const todayStr = ymd(toTz(new Date()))
+  const now = toTz(new Date())
+  const todayStr = ymd(now)
 
   const missedTasks = useMemo(
-    () => tasks.filter((t) => !t.completed && (t.missed || t.scheduled_date < todayStr)),
+    () =>
+      tasks.filter((t) => {
+        if (t.completed) return false
+        if (t.missed) return true
+        if (t.scope === 'week') return weekEndOf(t.scheduled_date) < todayStr
+        return t.scheduled_date < todayStr
+      }),
     [tasks, todayStr],
   )
   const missedEvents = useMemo(

@@ -72,7 +72,7 @@ import {
 } from '@/lib/events'
 import { createAllDayEvent, deleteAllDayEvent, type AllDayEvent } from '@/lib/all-day-events'
 import { EventModal, type EventModalState } from '@/components/calendar/EventModal'
-import { combineZonedDayAndTime, formatTz, toTz, ymd } from '@/lib/tz'
+import { combineZonedDayAndTime, formatTz, toTz, ymd, weekEndOf } from '@/lib/tz'
 
 export const Route = createFileRoute('/')({
   component: HomePage,
@@ -110,8 +110,9 @@ function periodRange(now: Date, p: Period): { from: string; to: string } {
     return { from: s, to: s }
   }
   if (p === 'week') {
-    const start = new Date(y, m, d - now.getDay())
-    const end = new Date(y, m, d - now.getDay() + 6)
+    const daysFromMon = now.getDay() === 0 ? 6 : now.getDay() - 1
+    const start = new Date(y, m, d - daysFromMon)
+    const end = new Date(y, m, d - daysFromMon + 6)
     return { from: ymd(start), to: ymd(end) }
   }
   if (p === 'month') {
@@ -182,12 +183,14 @@ function HomePage() {
   const completedGoals = goals.filter((g) => g.completed).length
 
   useEffect(() => {
-    const overdue = tasks.filter(
-      (t) => t.scheduled_date < todayStr && !t.completed && !t.missed,
-    )
+    const overdue = tasks.filter((t) => {
+      if (t.completed || t.missed) return false
+      if (t.scope === 'week') return weekEndOf(t.scheduled_date) < todayStr
+      return t.scheduled_date < todayStr
+    })
     if (overdue.length > 0) {
       markMissedTasks(overdue.map((t) => ({ id: t.id, scheduled_date: t.scheduled_date }))).catch(
-        console.error,
+        () => toast.error('Erro ao registrar tarefas perdidas'),
       )
     }
   }, [tasks, todayStr])
@@ -198,7 +201,10 @@ function HomePage() {
   const timelineItems: TimelineItem[] = useMemo(() => {
     const items: TimelineItem[] = []
     for (const t of tasks) {
-      if (t.missed || (!t.completed && t.scheduled_date < todayStr)) continue
+      const isOverdue = t.scope === 'week'
+        ? weekEndOf(t.scheduled_date) < todayStr
+        : t.scheduled_date < todayStr
+      if (t.missed || (!t.completed && isOverdue)) continue
       if (t.scheduled_date < range.from || t.scheduled_date > range.to) continue
       const time = t.scheduled_time ? t.scheduled_time.slice(0, 5) : null
       items.push({
@@ -612,9 +618,8 @@ type Frequency = 'daily' | 'weekly' | 'monthly'
 function thisWeekEnd(todayStr: string): string {
   const [y, m, d] = todayStr.split('-').map(Number)
   const date = new Date(y, m - 1, d)
-  const daysToSat = (6 - date.getDay() + 7) % 7
-  const sat = new Date(y, m - 1, d + (daysToSat || 7))
-  return ymd(sat)
+  const daysToSun = date.getDay() === 0 ? 0 : 7 - date.getDay()
+  return ymd(new Date(y, m - 1, d + daysToSun))
 }
 
 function AddItemForm({ todayStr }: { todayStr: string }) {
@@ -675,6 +680,7 @@ function AddItemForm({ todayStr }: { todayStr: string }) {
         toast.success('Lembrete adicionado')
       } else if (category === 'task') {
         const time = hasTime ? startTime : null
+        const scope = isWeekMode ? 'week' as const : 'day' as const
         if (effectiveRepeat) {
           await createRecurringTasks({
             title: title.trim(),
@@ -684,10 +690,11 @@ function AddItemForm({ todayStr }: { todayStr: string }) {
             priority: priority as TaskPriority,
             frequency: effectiveFrequency,
             weekDays: effectiveFrequency === 'weekly' ? weekDays : undefined,
+            scope,
           })
           toast.success(isWeekMode ? 'Tarefa adicionada para toda a semana' : 'Tarefas recorrentes criadas')
         } else {
-          await createTask({ title: title.trim(), scheduled_date: date, scheduled_time: time, priority: priority as TaskPriority })
+          await createTask({ title: title.trim(), scheduled_date: date, scheduled_time: time, priority: priority as TaskPriority, scope })
           toast.success('Tarefa adicionada')
         }
       } else {

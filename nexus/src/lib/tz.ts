@@ -38,3 +38,10 @@ export function addDays(d: Date, n: number): Date {
   x.setDate(x.getDate() + n)
   return x
 }
+
+export function weekEndOf(dateStr: string): string {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  const date = new Date(y, m - 1, d)
+  const daysToSun = date.getDay() === 0 ? 0 : 7 - date.getDay()
+  return ymd(new Date(y, m - 1, d + daysToSun))
+}

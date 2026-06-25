@@ -14,6 +14,7 @@ export type Task = {
   created_at: string
   missed: boolean
   missed_at: string | null
+  scope: 'day' | 'week'
 }
 
 export async function fetchTasks(): Promise<Task[]> {
@@ -28,6 +29,7 @@ export async function fetchTasks(): Promise<Task[]> {
     priority: (t.priority as TaskPriority) ?? 'common',
     missed: (t.missed as boolean) ?? false,
     missed_at: (t.missed_at as string | null) ?? null,
+    scope: (t.scope as 'day' | 'week') ?? 'day',
   }))
 }
 
@@ -36,12 +38,14 @@ export async function createTask(input: {
   scheduled_date: string
   scheduled_time: string | null
   priority?: TaskPriority
+  scope?: 'day' | 'week'
 }): Promise<void> {
   const { error } = await supabase.from('tasks').insert({
     title: input.title,
     scheduled_date: input.scheduled_date,
     scheduled_time: input.scheduled_time ?? null,
     priority: input.priority ?? 'common',
+    scope: input.scope ?? 'day',
   })
   if (error) throw error
   queryClient.invalidateQueries({ queryKey: ['tasks'] })
@@ -55,6 +59,7 @@ export async function createRecurringTasks(input: {
   priority: TaskPriority
   frequency: 'daily' | 'weekly' | 'monthly'
   weekDays?: number[]
+  scope?: 'day' | 'week'
 }): Promise<void> {
   const dates = generateDates(input.startDate, input.endDate, input.frequency, input.weekDays)
   if (dates.length === 0) return
@@ -63,6 +68,7 @@ export async function createRecurringTasks(input: {
     scheduled_date: d,
     scheduled_time: input.scheduled_time,
     priority: input.priority,
+    scope: input.scope ?? 'day',
   }))
   const { error } = await supabase.from('tasks').insert(rows)
   if (error) throw error
@@ -151,7 +157,8 @@ function generateDates(
       current = addDays(current, 1)
     } else {
       results.push(dateStr)
-      current = new Date(current.getFullYear(), current.getMonth() + 1, current.getDate())
+      const lastDayOfNext = new Date(current.getFullYear(), current.getMonth() + 2, 0).getDate()
+      current = new Date(current.getFullYear(), current.getMonth() + 1, Math.min(sd, lastDayOfNext))
     }
   }
   return results
