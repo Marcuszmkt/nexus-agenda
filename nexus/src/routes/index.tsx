@@ -252,6 +252,35 @@ function HomePage() {
     return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b))
   }, [timelineItems])
 
+  const [recentlyCompleted, setRecentlyCompleted] = useState<Map<string, number>>(new Map())
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setRecentlyCompleted((prev) => {
+        const now = Date.now()
+        const next = new Map(prev)
+        for (const [itemId, ts] of next) {
+          if (now - ts >= 3_600_000) next.delete(itemId)
+        }
+        return next
+      })
+    }, 60_000)
+    return () => clearInterval(id)
+  }, [])
+
+  function handleComplete(id: string) {
+    setRecentlyCompleted((prev) => new Map(prev).set(id, Date.now()))
+  }
+
+  function isHiddenByCompletion(item: TimelineItem): boolean {
+    const completed =
+      item.kind === 'task' ? item.task.completed : item.kind === 'event' ? item.event.completed : false
+    if (!completed) return false
+    const ts = recentlyCompleted.get(item.id)
+    if (ts === undefined) return true
+    return Date.now() - ts >= 3_600_000
+  }
+
   // End of day banner (after 20h)
   const pendingToday = useMemo(
     () =>
@@ -406,24 +435,28 @@ function HomePage() {
                   </div>
                 ) : period === 'day' ? (
                   <ul className="flex flex-col">
-                    {(grouped[0]?.[1] ?? []).map((item) => (
-                      <TimelineRow key={`${item.kind}-${item.id}`} item={item} todayStr={todayStr} />
+                    {(grouped[0]?.[1] ?? []).filter((item) => !isHiddenByCompletion(item)).map((item) => (
+                      <TimelineRow key={`${item.kind}-${item.id}`} item={item} todayStr={todayStr} onComplete={handleComplete} />
                     ))}
                   </ul>
                 ) : (
                   <div className="flex flex-col gap-5">
-                    {grouped.map(([date, items]) => (
-                      <div key={date}>
-                        <div className="text-xs font-semibold text-primary mb-1 first-letter:uppercase">
-                          {formatTz(new Date(`${date}T12:00:00Z`), "EEEE, d 'de' MMMM")}
+                    {grouped.map(([date, items]) => {
+                      const visible = items.filter((item) => !isHiddenByCompletion(item))
+                      if (visible.length === 0) return null
+                      return (
+                        <div key={date}>
+                          <div className="text-xs font-semibold text-primary mb-1 first-letter:uppercase">
+                            {formatTz(new Date(`${date}T12:00:00Z`), "EEEE, d 'de' MMMM")}
+                          </div>
+                          <ul className="flex flex-col">
+                            {visible.map((item) => (
+                              <TimelineRow key={`${item.kind}-${item.id}`} item={item} todayStr={todayStr} onComplete={handleComplete} />
+                            ))}
+                          </ul>
                         </div>
-                        <ul className="flex flex-col">
-                          {items.map((item) => (
-                            <TimelineRow key={`${item.kind}-${item.id}`} item={item} todayStr={todayStr} />
-                          ))}
-                        </ul>
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 )}
               </section>
@@ -476,7 +509,7 @@ function StatCard({
 
 /* ---- Timeline Row ---- */
 
-function TimelineRow({ item, todayStr }: { item: TimelineItem; todayStr: string }) {
+function TimelineRow({ item, todayStr, onComplete }: { item: TimelineItem; todayStr: string; onComplete: (id: string) => void }) {
   const isMobile = useMediaQuery('(max-width: 768px)')
   const isTask = item.kind === 'task'
   const isEvent = item.kind === 'event'
@@ -545,7 +578,11 @@ function TimelineRow({ item, todayStr }: { item: TimelineItem; todayStr: string 
         {isTask ? (
           <button
             type="button"
-            onClick={() => toggleTask(item.task.id, !item.task.completed).catch(() => toast.error('Erro'))}
+            onClick={() => {
+              const nowDone = !item.task.completed
+              toggleTask(item.task.id, nowDone).catch(() => toast.error('Erro'))
+              if (nowDone) onComplete(item.task.id)
+            }}
             className="text-primary hover:scale-110 transition-transform shrink-0"
             aria-label="Concluir"
           >
@@ -554,7 +591,11 @@ function TimelineRow({ item, todayStr }: { item: TimelineItem; todayStr: string 
         ) : item.kind === 'event' ? (
           <button
             type="button"
-            onClick={() => toggleEvent(item.event.id, !item.event.completed).catch(() => toast.error('Erro'))}
+            onClick={() => {
+              const nowDone = !item.event.completed
+              toggleEvent(item.event.id, nowDone).catch(() => toast.error('Erro'))
+              if (nowDone) onComplete(item.event.id)
+            }}
             className="hover:scale-110 transition-transform shrink-0"
             aria-label="Concluir evento"
             style={{ color: item.event.color }}
