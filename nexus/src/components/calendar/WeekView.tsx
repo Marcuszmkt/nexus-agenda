@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNow } from '@/hooks/use-now'
 import { formatTz, toTz } from '@/lib/tz'
 import type { CalendarEvent } from '@/lib/events'
@@ -30,6 +30,7 @@ export function WeekView({ anchorDay, events, allDayEvents = [], tasks = [], onO
   const now = useNow(30_000)
   const zonedNow = toTz(now)
   const isMobile = useMediaQuery('(max-width: 768px)')
+  const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set())
 
   const days = useMemo(() => {
     if (isMobile) {
@@ -82,14 +83,31 @@ export function WeekView({ anchorDay, events, allDayEvents = [], tasks = [], onO
           className="grid border-b border-border bg-muted/30"
           style={{ gridTemplateColumns: `64px repeat(${days.length}, minmax(0, 1fr))` }}
         >
-          <div className="text-[10px] text-muted-foreground text-right pr-2 py-1.5">
+          <div className="text-[10px] text-muted-foreground text-right pr-2 py-1.5 self-start mt-1.5">
             dia inteiro
           </div>
-          {ymds.map((ymd) => (
-            <div key={ymd} className="flex flex-col gap-0.5 p-1 min-h-7">
-              {allDayEvents
-                .filter((e) => e.event_date === ymd)
-                .map((e) => (
+          {ymds.map((ymd) => {
+            const dayAllDay = allDayEvents.filter((e) => e.event_date === ymd)
+            const dayTasks = tasks.filter((t) => t.scheduled_date === ymd && !t.scheduled_time)
+            const total = dayAllDay.length + dayTasks.length
+            const isExpanded = expandedDays.has(ymd)
+            const showAll = isExpanded || total <= 1
+            const visibleAllDay = showAll ? dayAllDay : dayAllDay.slice(0, 1)
+            const visibleTasks = showAll ? dayTasks : dayAllDay.length === 0 ? dayTasks.slice(0, 1) : []
+            const hiddenCount = total - visibleAllDay.length - visibleTasks.length
+
+            function toggle() {
+              setExpandedDays((prev) => {
+                const next = new Set(prev)
+                if (next.has(ymd)) next.delete(ymd)
+                else next.add(ymd)
+                return next
+              })
+            }
+
+            return (
+              <div key={ymd} className="flex flex-col gap-0.5 p-1">
+                {visibleAllDay.map((e) => (
                   <button
                     key={e.id}
                     type="button"
@@ -100,9 +118,7 @@ export function WeekView({ anchorDay, events, allDayEvents = [], tasks = [], onO
                     {e.title}
                   </button>
                 ))}
-              {tasks
-                .filter((t) => t.scheduled_date === ymd && !t.scheduled_time)
-                .map((t) => (
+                {visibleTasks.map((t) => (
                   <div
                     key={t.id}
                     className={`h-7 rounded px-1.5 text-left text-[11px] border border-primary/40 bg-primary/10 text-primary truncate flex items-center ${t.completed ? 'line-through opacity-60' : ''}`}
@@ -111,8 +127,27 @@ export function WeekView({ anchorDay, events, allDayEvents = [], tasks = [], onO
                     ✓ {t.title}
                   </div>
                 ))}
-            </div>
-          ))}
+                {!isExpanded && hiddenCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={toggle}
+                    className="text-[10px] text-primary text-left px-1 leading-5 hover:underline"
+                  >
+                    +{hiddenCount} mais
+                  </button>
+                )}
+                {isExpanded && total > 1 && (
+                  <button
+                    type="button"
+                    onClick={toggle}
+                    className="text-[10px] text-primary text-left px-1 leading-5 hover:underline"
+                  >
+                    ver menos
+                  </button>
+                )}
+              </div>
+            )
+          })}
         </div>
       )}
 
