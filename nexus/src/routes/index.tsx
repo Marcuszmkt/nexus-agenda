@@ -16,6 +16,7 @@ import {
   X,
   RefreshCw,
   AlertTriangle,
+  ChevronDown,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -290,6 +291,7 @@ function HomePage() {
   )
   const showBanner = hour >= 20 && pendingToday > 0
   const [bannerDismissed, setBannerDismissed] = useState(false)
+  const [nextEventCardExpanded, setNextEventCardExpanded] = useState(false)
 
   async function handlePostponeAll() {
     try {
@@ -463,8 +465,13 @@ function HomePage() {
             </div>
 
             <div className="lg:col-span-2 flex flex-col gap-6">
-              <NextEventCard event={nextEvent} allDayToday={todayAllDay[0]} />
-              <GoalsCard goals={goals} />
+              <NextEventCard
+                event={nextEvent}
+                allDayToday={todayAllDay[0]}
+                todayEvents={todayEvents}
+                onExpandedChange={setNextEventCardExpanded}
+              />
+              {!nextEventCardExpanded && <GoalsCard goals={goals} />}
             </div>
           </div>
         </div>
@@ -511,6 +518,7 @@ function StatCard({
 
 function TimelineRow({ item, todayStr, onComplete }: { item: TimelineItem; todayStr: string; onComplete: (id: string) => void }) {
   const isMobile = useMediaQuery('(max-width: 768px)')
+  const [mobileExpanded, setMobileExpanded] = useState(false)
   const isTask = item.kind === 'task'
   const isEvent = item.kind === 'event'
   const completed = isTask ? item.task.completed : isEvent ? item.event.completed : false
@@ -567,7 +575,10 @@ function TimelineRow({ item, todayStr, onComplete }: { item: TimelineItem; today
   return (
     <>
       <li
-        className={`group flex items-center gap-3 py-2.5 px-2 -mx-2 rounded-lg border-b border-border/40 last:border-0 hover:bg-accent/30 transition-colors ${
+        onClick={() => {
+          if (isMobile) setMobileExpanded((v) => !v)
+        }}
+        className={`group flex items-start gap-3 py-2.5 px-2 -mx-2 rounded-lg border-b border-border/40 last:border-0 hover:bg-accent/30 transition-colors ${
           priority === 'important' ? 'border-l-2 border-l-amber-500 pl-3 bg-amber-500/5' : ''
         }`}
       >
@@ -578,7 +589,8 @@ function TimelineRow({ item, todayStr, onComplete }: { item: TimelineItem; today
         {isTask ? (
           <button
             type="button"
-            onClick={() => {
+            onClick={(e) => {
+              e.stopPropagation()
               const nowDone = !item.task.completed
               toggleTask(item.task.id, nowDone).catch(() => toast.error('Erro'))
               if (nowDone) onComplete(item.task.id)
@@ -591,7 +603,8 @@ function TimelineRow({ item, todayStr, onComplete }: { item: TimelineItem; today
         ) : item.kind === 'event' ? (
           <button
             type="button"
-            onClick={() => {
+            onClick={(e) => {
+              e.stopPropagation()
               const nowDone = !item.event.completed
               toggleEvent(item.event.id, nowDone).catch(() => toast.error('Erro'))
               if (nowDone) onComplete(item.event.id)
@@ -606,14 +619,21 @@ function TimelineRow({ item, todayStr, onComplete }: { item: TimelineItem; today
           <div className="size-5 shrink-0" />
         )}
 
-        <span className={`flex-1 text-sm truncate flex items-center gap-1.5 ${completed ? 'line-through opacity-60' : ''}`}>
+        <span
+          className={`flex-1 text-sm flex items-center gap-1.5 transition-all duration-200 ${completed ? 'line-through opacity-60' : ''} ${
+            isMobile && mobileExpanded ? 'whitespace-normal break-words' : 'truncate'
+          }`}
+        >
           {priority === 'important' && <Flame className="size-3.5 text-amber-500 shrink-0" />}
           {title}
         </span>
 
         <span className={`text-[11px] font-medium px-2 py-0.5 rounded-md shrink-0 ${tagClass}`}>{tagLabel}</span>
 
-        <div className={`flex items-center gap-1 ${isMobile ? '' : 'opacity-0 group-hover:opacity-100'} transition-opacity`}>
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className={`flex items-center gap-1 ${isMobile ? '' : 'opacity-0 group-hover:opacity-100'} transition-opacity`}
+        >
           {canPostpone && (
             <button
               type="button"
@@ -971,75 +991,98 @@ function AddItemForm({ todayStr }: { todayStr: string }) {
 
 /* ---- Next Event Card ---- */
 
+const EXPANDED_EVENT_STYLES = [
+  { gradient: 'linear-gradient(135deg, #1e3a5f, #2563EB, #60A5FA)', border: '#60A5FA', shadow: 'rgba(37,99,235,0.4)' },
+  { gradient: 'linear-gradient(135deg, #064e3b, #059669, #34D399)', border: '#34D399', shadow: 'rgba(5,150,105,0.4)' },
+  { gradient: 'linear-gradient(135deg, #7c2d12, #EA580C, #FB923C)', border: '#FB923C', shadow: 'rgba(234,88,12,0.4)' },
+  { gradient: 'linear-gradient(135deg, #831843, #DB2777, #F472B6)', border: '#F472B6', shadow: 'rgba(219,39,119,0.4)' },
+]
+
+function eventInLabel(start: Date, rawNow: Date): string {
+  const diffMin = Math.max(0, Math.round((start.getTime() - rawNow.getTime()) / 60000))
+  if (diffMin < 60) return `Em ${diffMin}min`
+  if (diffMin < 60 * 24) return `Em ${Math.floor(diffMin / 60)}h ${diffMin % 60}m`
+  return `Em ${Math.floor(diffMin / (60 * 24))}d`
+}
+
 function NextEventCard({
   event,
   allDayToday,
+  todayEvents,
+  onExpandedChange,
 }: {
   event: CalendarEvent | undefined
   allDayToday: AllDayEvent | undefined
+  todayEvents: CalendarEvent[]
+  onExpandedChange?: (expanded: boolean) => void
 }) {
   const rawNow = useNow(60_000)
+  const [expanded, setExpanded] = useState(false)
 
-  if (allDayToday) {
-    return (
-      <section className="rounded-2xl border border-primary/20 bg-card/60 backdrop-blur p-6 shadow-sm">
-        <h3 className="text-sm text-muted-foreground mb-3">Próximo evento em destaque</h3>
-        <div
-          className="rounded-2xl p-6 text-white"
-          style={{
-            background: 'linear-gradient(135deg, #4C1D95 0%, #7C3AED 50%, #9F67FA 100%)',
-            border: '1px solid #A78BFA',
-            boxShadow: '0 8px 32px rgba(124, 58, 237, 0.4)',
-          }}
-        >
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="size-11 rounded-xl bg-[#7C3AED] inline-flex items-center justify-center shadow-inner">
-                <CalendarIcon className="size-5 text-white" />
-              </div>
-              <div className="text-2xl font-bold leading-tight">{allDayToday.title}</div>
-            </div>
-            <span className="shrink-0 text-xs font-medium px-2.5 py-1 rounded-md bg-white/20 text-white">
-              Hoje
-            </span>
-          </div>
-          <div className="mt-3 text-sm text-white/80">Dia inteiro</div>
-          <Link to="/calendario" className="mt-4 inline-flex items-center gap-2 rounded-lg bg-white/10 hover:bg-white/20 transition-colors text-white text-sm font-medium px-3 py-2">
-            Ver no calendário <ArrowRight className="size-4" />
-          </Link>
-        </div>
-      </section>
-    )
+  useEffect(() => {
+    onExpandedChange?.(expanded)
+  }, [expanded, onExpandedChange])
+
+  const sortedTodayEvents = useMemo(
+    () => [...todayEvents].sort((a, b) => a.start.getTime() - b.start.getTime()),
+    [todayEvents],
+  )
+  const canExpand = sortedTodayEvents.length > 0
+
+  function toggleExpanded() {
+    if (canExpand) setExpanded((v) => !v)
   }
 
-  if (!event) {
+  const chevron = canExpand && (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation()
+        setExpanded((v) => !v)
+      }}
+      className="shrink-0 size-7 rounded-full bg-white/10 hover:bg-white/20 inline-flex items-center justify-center transition-colors"
+      aria-label={expanded ? 'Recolher' : 'Expandir'}
+    >
+      <ChevronDown className={`size-4 transition-transform duration-300 ${expanded ? 'rotate-180' : ''}`} />
+    </button>
+  )
+
+  let mainCard: React.ReactNode
+  if (allDayToday) {
+    mainCard = (
+      <>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="size-11 rounded-xl bg-[#7C3AED] inline-flex items-center justify-center shadow-inner">
+              <CalendarIcon className="size-5 text-white" />
+            </div>
+            <div className="text-2xl font-bold leading-tight">{allDayToday.title}</div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-xs font-medium px-2.5 py-1 rounded-md bg-white/20 text-white">Hoje</span>
+            {chevron}
+          </div>
+        </div>
+        <div className="mt-3 text-sm text-white/80">Dia inteiro</div>
+        <Link
+          to="/calendario"
+          onClick={(e) => e.stopPropagation()}
+          className="mt-4 inline-flex items-center gap-2 rounded-lg bg-white/10 hover:bg-white/20 transition-colors text-white text-sm font-medium px-3 py-2"
+        >
+          Ver no calendário <ArrowRight className="size-4" />
+        </Link>
+      </>
+    )
+  } else if (!event) {
     return (
       <section className="rounded-2xl border border-border bg-card/60 backdrop-blur p-6 shadow-sm">
         <h3 className="text-sm text-muted-foreground mb-3">Próximo evento em destaque</h3>
         <p className="text-sm text-muted-foreground">Nenhum evento futuro. Aproveite para planejar 🌱</p>
       </section>
     )
-  }
-
-  const diffMin = Math.max(0, Math.round((event.start.getTime() - rawNow.getTime()) / 60000))
-  const inLabel =
-    diffMin < 60
-      ? `Em ${diffMin}min`
-      : diffMin < 60 * 24
-        ? `Em ${Math.floor(diffMin / 60)}h ${diffMin % 60}m`
-        : `Em ${Math.floor(diffMin / (60 * 24))}d`
-
-  return (
-    <section className="rounded-2xl border border-primary/20 bg-card/60 backdrop-blur p-6 shadow-sm">
-      <h3 className="text-sm text-muted-foreground mb-3">Próximo evento em destaque</h3>
-      <div
-        className="rounded-2xl p-6 text-white"
-        style={{
-          background: 'linear-gradient(135deg, #4C1D95 0%, #7C3AED 50%, #9F67FA 100%)',
-          border: '1px solid #A78BFA',
-          boxShadow: '0 8px 32px rgba(124, 58, 237, 0.4)',
-        }}
-      >
+  } else {
+    mainCard = (
+      <>
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="size-11 rounded-xl bg-[#7C3AED] inline-flex items-center justify-center shadow-inner">
@@ -1047,9 +1090,12 @@ function NextEventCard({
             </div>
             <div className="text-2xl font-bold leading-tight">{event.title}</div>
           </div>
-          <span className="shrink-0 text-xs font-medium px-2.5 py-1 rounded-md bg-white/20 text-white">
-            {inLabel}
-          </span>
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-xs font-medium px-2.5 py-1 rounded-md bg-white/20 text-white">
+              {eventInLabel(event.start, rawNow)}
+            </span>
+            {chevron}
+          </div>
         </div>
         <div className="mt-4 flex items-center gap-2 text-sm text-white/90">
           <Clock className="size-4" />
@@ -1058,10 +1104,75 @@ function NextEventCard({
         {event.description && (
           <div className="mt-1 text-sm text-white/80 truncate">{event.description}</div>
         )}
-        <Link to="/calendario" className="mt-4 inline-flex items-center gap-2 rounded-lg bg-white/10 hover:bg-white/20 transition-colors text-white text-sm font-medium px-3 py-2">
+        <Link
+          to="/calendario"
+          onClick={(e) => e.stopPropagation()}
+          className="mt-4 inline-flex items-center gap-2 rounded-lg bg-white/10 hover:bg-white/20 transition-colors text-white text-sm font-medium px-3 py-2"
+        >
           Ver no calendário <ArrowRight className="size-4" />
         </Link>
+      </>
+    )
+  }
+
+  return (
+    <section className="rounded-2xl border border-primary/20 bg-card/60 backdrop-blur p-6 shadow-sm">
+      <h3 className="text-sm text-muted-foreground mb-3">Próximo evento em destaque</h3>
+      <div
+        onClick={toggleExpanded}
+        className={`rounded-2xl p-6 text-white transition-all duration-300 ${canExpand ? 'cursor-pointer' : ''}`}
+        style={{
+          background: 'linear-gradient(135deg, #4C1D95 0%, #7C3AED 50%, #9F67FA 100%)',
+          border: '1px solid #A78BFA',
+          boxShadow: '0 8px 32px rgba(124, 58, 237, 0.4)',
+        }}
+      >
+        {mainCard}
       </div>
+
+      {expanded && (
+        <div className="mt-4 flex flex-col gap-4 transition-all duration-300">
+          {sortedTodayEvents.map((ev, i) => {
+            const style = EXPANDED_EVENT_STYLES[i % EXPANDED_EVENT_STYLES.length]
+            return (
+              <div
+                key={ev.id}
+                className="rounded-2xl p-6 text-white transition-all duration-300"
+                style={{
+                  background: style.gradient,
+                  border: `1px solid ${style.border}`,
+                  boxShadow: `0 8px 32px ${style.shadow}`,
+                }}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="size-11 rounded-xl bg-white/15 inline-flex items-center justify-center shadow-inner">
+                      <CalendarIcon className="size-5 text-white" />
+                    </div>
+                    <div className="text-2xl font-bold leading-tight">{ev.title}</div>
+                  </div>
+                  <span className="shrink-0 text-xs font-medium px-2.5 py-1 rounded-md bg-white/20 text-white">
+                    {eventInLabel(ev.start, rawNow)}
+                  </span>
+                </div>
+                <div className="mt-4 flex items-center gap-2 text-sm text-white/90">
+                  <Clock className="size-4" />
+                  {formatTz(ev.start, 'HH:mm')} - {formatTz(ev.end, 'HH:mm')}
+                </div>
+                {ev.description && (
+                  <div className="mt-1 text-sm text-white/80 truncate">{ev.description}</div>
+                )}
+                <Link
+                  to="/calendario"
+                  className="mt-4 inline-flex items-center gap-2 rounded-lg bg-white/10 hover:bg-white/20 transition-colors text-white text-sm font-medium px-3 py-2"
+                >
+                  Ver no calendário <ArrowRight className="size-4" />
+                </Link>
+              </div>
+            )
+          })}
+        </div>
+      )}
     </section>
   )
 }
