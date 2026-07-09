@@ -17,6 +17,7 @@ import {
   RefreshCw,
   AlertTriangle,
   ChevronDown,
+  CheckSquare,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -38,6 +39,7 @@ import { useTasks } from '@/hooks/use-tasks'
 import { useGoals } from '@/hooks/use-goals'
 import { useEvents } from '@/hooks/use-events'
 import { useAllDayEvents } from '@/hooks/use-all-day-events'
+import { useHabits } from '@/hooks/use-habits'
 import { useNow } from '@/hooks/use-now'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import {
@@ -92,6 +94,11 @@ type TimelineItem =
   | { kind: 'event'; id: string; date: string; time: string; sortKey: string; event: CalendarEvent }
   | { kind: 'reminder'; id: string; date: string; time: null; sortKey: string; allDay: AllDayEvent }
 
+type SpotlightItem =
+  | { kind: 'event'; id: string; start: Date; end: Date; title: string; description: string | null }
+  | { kind: 'task'; id: string; start: Date; title: string }
+  | { kind: 'habit'; id: string; start: Date; title: string; icon: string }
+
 function itemPriority(it: TimelineItem): EventPriority {
   if (it.kind === 'task') return (it.task.priority as EventPriority) ?? 'common'
   if (it.kind === 'event') return it.event.priority
@@ -143,6 +150,7 @@ function HomePage() {
   const { data: goals = [] } = useGoals(2026)
   const { data: events = [] } = useEvents()
   const { data: allDayEvents = [] } = useAllDayEvents()
+  const { data: habits = [] } = useHabits()
 
   const todayTasks = useMemo(() => tasks.filter((t) => t.scheduled_date === todayStr), [tasks, todayStr])
   const todayEvents = useMemo(
@@ -171,6 +179,39 @@ function HomePage() {
   const todayAllDay = useMemo(
     () => allDayEvents.filter((e) => e.event_date === todayStr),
     [allDayEvents, todayStr],
+  )
+
+  const todaySpotlightItems = useMemo(() => {
+    const items: SpotlightItem[] = []
+    for (const ev of todayEvents) {
+      items.push({ kind: 'event', id: ev.id, start: ev.start, end: ev.end, title: ev.title, description: ev.description })
+    }
+    for (const t of todayTasks) {
+      if (!t.scheduled_time) continue
+      items.push({ kind: 'task', id: t.id, start: combineZonedDayAndTime(now, t.scheduled_time.slice(0, 5)), title: t.title })
+    }
+    for (const h of habits) {
+      if (!h.scheduled_time) continue
+      const scheduledToday = h.days_of_week.length === 0 || h.days_of_week.includes(now.getDay())
+      if (!scheduledToday) continue
+      items.push({ kind: 'habit', id: h.id, start: combineZonedDayAndTime(now, h.scheduled_time.slice(0, 5)), title: h.title, icon: h.icon })
+    }
+    items.sort((a, b) => a.start.getTime() - b.start.getTime())
+    return items
+  }, [todayEvents, todayTasks, habits, now])
+
+  const spotlightMainItem = useMemo(() => {
+    const upcoming = todaySpotlightItems.filter((it) => spotlightEndTime(it).getTime() >= rawNow.getTime())
+    if (upcoming.length > 0) return upcoming[0]
+    return todaySpotlightItems.length > 0 ? todaySpotlightItems[todaySpotlightItems.length - 1] : undefined
+  }, [todaySpotlightItems, rawNow])
+
+  const spotlightOtherItems = useMemo(
+    () =>
+      todaySpotlightItems.filter(
+        (it) => !(spotlightMainItem && it.kind === spotlightMainItem.kind && it.id === spotlightMainItem.id),
+      ),
+    [todaySpotlightItems, spotlightMainItem],
   )
 
   const upcomingEvents = useMemo(
@@ -315,7 +356,11 @@ function HomePage() {
   return (
     <AppShell>
       <div className="h-full overflow-y-auto" style={{ background: 'linear-gradient(135deg, var(--color-background) 0%, var(--color-background) 70%, oklch(0.5 0.25 293 / 5%) 100%)' }}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-10 flex flex-col gap-6">
+        <div
+          className={`mx-auto px-4 sm:px-6 py-6 sm:py-10 flex flex-col gap-6 transition-[max-width] duration-300 ${
+            nextEventCardExpanded ? 'max-w-[1780px]' : 'max-w-7xl'
+          }`}
+        >
 
           {showBanner && !bannerDismissed && (
             <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 flex items-center justify-between gap-3 flex-wrap">
@@ -345,7 +390,7 @@ function HomePage() {
             </p>
           </section>
 
-          <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+          <div className={`grid grid-cols-1 gap-6 ${nextEventCardExpanded ? 'lg:grid-cols-7' : 'lg:grid-cols-5'}`}>
             <div className="lg:col-span-3 flex flex-col gap-6">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <StatCard
@@ -406,7 +451,7 @@ function HomePage() {
 
               <AddItemForm todayStr={todayStr} />
 
-              <section className="rounded-2xl border border-primary/15 bg-card/60 backdrop-blur p-6 shadow-sm">
+              <section id="resumo" className="rounded-2xl border border-primary/15 bg-card/60 backdrop-blur p-6 shadow-sm">
                 <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
                   <h3 className="text-lg font-semibold">Resumo</h3>
                   <div className="inline-flex rounded-full bg-muted p-1 text-xs">
@@ -466,13 +511,20 @@ function HomePage() {
 
             <div className="lg:col-span-2 flex flex-col gap-6">
               <NextEventCard
-                event={nextEvent}
                 allDayToday={todayAllDay[0]}
-                todayEvents={todayEvents}
-                onExpandedChange={setNextEventCardExpanded}
+                mainItem={spotlightMainItem}
+                hasOthers={spotlightOtherItems.length > 0}
+                expanded={nextEventCardExpanded}
+                onToggle={() => setNextEventCardExpanded((v) => !v)}
               />
-              {!nextEventCardExpanded && <GoalsCard goals={goals} />}
+              <GoalsCard goals={goals} />
             </div>
+
+            {nextEventCardExpanded && spotlightOtherItems.length > 0 && (
+              <div className="lg:col-span-2">
+                <SpotlightOthersList items={spotlightOtherItems} rawNow={rawNow} />
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -998,47 +1050,111 @@ const EXPANDED_EVENT_STYLES = [
   { gradient: 'linear-gradient(135deg, #831843, #DB2777, #F472B6)', border: '#F472B6', shadow: 'rgba(219,39,119,0.4)' },
 ]
 
-function eventInLabel(start: Date, rawNow: Date): string {
+function spotlightInLabel(start: Date, rawNow: Date): string {
   const diffMin = Math.max(0, Math.round((start.getTime() - rawNow.getTime()) / 60000))
   if (diffMin < 60) return `Em ${diffMin}min`
   if (diffMin < 60 * 24) return `Em ${Math.floor(diffMin / 60)}h ${diffMin % 60}m`
   return `Em ${Math.floor(diffMin / (60 * 24))}d`
 }
 
-function NextEventCard({
-  event,
-  allDayToday,
-  todayEvents,
-  onExpandedChange,
+function spotlightEndTime(item: SpotlightItem): Date {
+  return item.kind === 'event' ? item.end : item.start
+}
+
+function SpotlightCardBody({
+  item,
+  iconWrapClass,
 }: {
-  event: CalendarEvent | undefined
+  item: SpotlightItem
+  iconWrapClass: string
+}) {
+  const isEvent = item.kind === 'event'
+  const isHabit = item.kind === 'habit'
+  const tagLabel = isEvent ? 'Evento' : isHabit ? 'Hábito' : 'Tarefa'
+  return (
+    <>
+      <div className="flex items-center gap-3 min-w-0">
+        <div className={`size-11 rounded-xl inline-flex items-center justify-center shadow-inner shrink-0 ${iconWrapClass}`}>
+          {isEvent ? (
+            <CalendarIcon className="size-5 text-white" />
+          ) : isHabit ? (
+            <span className="text-xl leading-none">{item.icon}</span>
+          ) : (
+            <CheckSquare className="size-5 text-white" />
+          )}
+        </div>
+        <div className="text-2xl font-bold leading-tight truncate">{item.title}</div>
+      </div>
+      <div className="mt-1 flex items-center gap-2">
+        <span
+          className={`text-[10px] font-medium px-2 py-0.5 rounded-md uppercase tracking-wide ${
+            isHabit ? 'bg-emerald-500/15 text-emerald-300' : 'bg-white/10 text-white/70'
+          }`}
+        >
+          {tagLabel}
+        </span>
+      </div>
+      <div className="mt-3 flex items-center gap-2 text-sm text-white/90">
+        <Clock className="size-4" />
+        {isEvent ? `${formatTz(item.start, 'HH:mm')} - ${formatTz(item.end, 'HH:mm')}` : formatTz(item.start, 'HH:mm')}
+      </div>
+      {isEvent && item.description && (
+        <div className="mt-1 text-sm text-white/80 truncate">{item.description}</div>
+      )}
+      {isEvent ? (
+        <Link
+          to="/calendario"
+          onClick={(e) => e.stopPropagation()}
+          className="mt-4 inline-flex items-center gap-2 rounded-lg bg-white/10 hover:bg-white/20 transition-colors text-white text-sm font-medium px-3 py-2"
+        >
+          Ver no calendário <ArrowRight className="size-4" />
+        </Link>
+      ) : isHabit ? (
+        <Link
+          to="/streak"
+          onClick={(e) => e.stopPropagation()}
+          className="mt-4 inline-flex items-center gap-2 rounded-lg bg-white/10 hover:bg-white/20 transition-colors text-white text-sm font-medium px-3 py-2"
+        >
+          Ver no Streak <ArrowRight className="size-4" />
+        </Link>
+      ) : (
+        <a
+          href="#resumo"
+          onClick={(e) => e.stopPropagation()}
+          className="mt-4 inline-flex items-center gap-2 rounded-lg bg-white/10 hover:bg-white/20 transition-colors text-white text-sm font-medium px-3 py-2"
+        >
+          Ver resumo <ArrowRight className="size-4" />
+        </a>
+      )}
+    </>
+  )
+}
+
+function NextEventCard({
+  allDayToday,
+  mainItem,
+  hasOthers,
+  expanded,
+  onToggle,
+}: {
   allDayToday: AllDayEvent | undefined
-  todayEvents: CalendarEvent[]
-  onExpandedChange?: (expanded: boolean) => void
+  mainItem: SpotlightItem | undefined
+  hasOthers: boolean
+  expanded: boolean
+  onToggle: () => void
 }) {
   const rawNow = useNow(60_000)
-  const [expanded, setExpanded] = useState(false)
 
-  useEffect(() => {
-    onExpandedChange?.(expanded)
-  }, [expanded, onExpandedChange])
-
-  const sortedTodayEvents = useMemo(
-    () => [...todayEvents].sort((a, b) => a.start.getTime() - b.start.getTime()),
-    [todayEvents],
-  )
-  const canExpand = sortedTodayEvents.length > 0
-
-  function toggleExpanded() {
-    if (canExpand) setExpanded((v) => !v)
+  function handleClick() {
+    if (hasOthers) onToggle()
   }
 
-  const chevron = canExpand && (
+  const chevron = hasOthers && (
     <button
       type="button"
       onClick={(e) => {
         e.stopPropagation()
-        setExpanded((v) => !v)
+        onToggle()
       }}
       className="shrink-0 size-7 rounded-full bg-white/10 hover:bg-white/20 inline-flex items-center justify-center transition-colors"
       aria-label={expanded ? 'Recolher' : 'Expandir'}
@@ -1073,54 +1189,35 @@ function NextEventCard({
         </Link>
       </>
     )
-  } else if (!event) {
+  } else if (!mainItem) {
     return (
       <section className="rounded-2xl border border-border bg-card/60 backdrop-blur p-6 shadow-sm">
-        <h3 className="text-sm text-muted-foreground mb-3">Próximo evento em destaque</h3>
-        <p className="text-sm text-muted-foreground">Nenhum evento futuro. Aproveite para planejar 🌱</p>
+        <h3 className="text-sm text-muted-foreground mb-3">Próximo compromisso em destaque</h3>
+        <p className="text-sm text-muted-foreground">Nenhum compromisso com horário hoje. Aproveite para planejar 🌱</p>
       </section>
     )
   } else {
     mainCard = (
-      <>
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="size-11 rounded-xl bg-[#7C3AED] inline-flex items-center justify-center shadow-inner">
-              <CalendarIcon className="size-5 text-white" />
-            </div>
-            <div className="text-2xl font-bold leading-tight">{event.title}</div>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <span className="text-xs font-medium px-2.5 py-1 rounded-md bg-white/20 text-white">
-              {eventInLabel(event.start, rawNow)}
-            </span>
-            {chevron}
-          </div>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1 min-w-0">
+          <SpotlightCardBody item={mainItem} iconWrapClass="bg-[#7C3AED]" />
         </div>
-        <div className="mt-4 flex items-center gap-2 text-sm text-white/90">
-          <Clock className="size-4" />
-          {formatTz(event.start, 'HH:mm')} - {formatTz(event.end, 'HH:mm')}
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-xs font-medium px-2.5 py-1 rounded-md bg-white/20 text-white">
+            {spotlightInLabel(mainItem.start, rawNow)}
+          </span>
+          {chevron}
         </div>
-        {event.description && (
-          <div className="mt-1 text-sm text-white/80 truncate">{event.description}</div>
-        )}
-        <Link
-          to="/calendario"
-          onClick={(e) => e.stopPropagation()}
-          className="mt-4 inline-flex items-center gap-2 rounded-lg bg-white/10 hover:bg-white/20 transition-colors text-white text-sm font-medium px-3 py-2"
-        >
-          Ver no calendário <ArrowRight className="size-4" />
-        </Link>
-      </>
+      </div>
     )
   }
 
   return (
     <section className="rounded-2xl border border-primary/20 bg-card/60 backdrop-blur p-6 shadow-sm">
-      <h3 className="text-sm text-muted-foreground mb-3">Próximo evento em destaque</h3>
+      <h3 className="text-sm text-muted-foreground mb-3">Próximo compromisso em destaque</h3>
       <div
-        onClick={toggleExpanded}
-        className={`rounded-2xl p-6 text-white transition-all duration-300 ${canExpand ? 'cursor-pointer' : ''}`}
+        onClick={handleClick}
+        className={`rounded-2xl p-6 text-white transition-all duration-300 ${hasOthers ? 'cursor-pointer' : ''}`}
         style={{
           background: 'linear-gradient(135deg, #4C1D95 0%, #7C3AED 50%, #9F67FA 100%)',
           border: '1px solid #A78BFA',
@@ -1129,50 +1226,39 @@ function NextEventCard({
       >
         {mainCard}
       </div>
+    </section>
+  )
+}
 
-      {expanded && (
-        <div className="mt-4 flex flex-col gap-4 transition-all duration-300">
-          {sortedTodayEvents.map((ev, i) => {
-            const style = EXPANDED_EVENT_STYLES[i % EXPANDED_EVENT_STYLES.length]
-            return (
-              <div
-                key={ev.id}
-                className="rounded-2xl p-6 text-white transition-all duration-300"
-                style={{
-                  background: style.gradient,
-                  border: `1px solid ${style.border}`,
-                  boxShadow: `0 8px 32px ${style.shadow}`,
-                }}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="size-11 rounded-xl bg-white/15 inline-flex items-center justify-center shadow-inner">
-                      <CalendarIcon className="size-5 text-white" />
-                    </div>
-                    <div className="text-2xl font-bold leading-tight">{ev.title}</div>
-                  </div>
-                  <span className="shrink-0 text-xs font-medium px-2.5 py-1 rounded-md bg-white/20 text-white">
-                    {eventInLabel(ev.start, rawNow)}
-                  </span>
+function SpotlightOthersList({ items, rawNow }: { items: SpotlightItem[]; rawNow: Date }) {
+  return (
+    <section className="rounded-2xl border border-primary/20 bg-card/60 backdrop-blur p-6 shadow-sm h-full animate-in fade-in slide-in-from-right-2 duration-300">
+      <h3 className="text-sm text-muted-foreground mb-3">Outros compromissos de hoje</h3>
+      <div className="flex flex-col gap-4">
+        {items.map((it, i) => {
+          const style = EXPANDED_EVENT_STYLES[i % EXPANDED_EVENT_STYLES.length]
+          return (
+            <div
+              key={`${it.kind}-${it.id}`}
+              className="rounded-2xl p-6 text-white transition-all duration-300"
+              style={{
+                background: style.gradient,
+                border: `1px solid ${style.border}`,
+                boxShadow: `0 8px 32px ${style.shadow}`,
+              }}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <SpotlightCardBody item={it} iconWrapClass="bg-white/15" />
                 </div>
-                <div className="mt-4 flex items-center gap-2 text-sm text-white/90">
-                  <Clock className="size-4" />
-                  {formatTz(ev.start, 'HH:mm')} - {formatTz(ev.end, 'HH:mm')}
-                </div>
-                {ev.description && (
-                  <div className="mt-1 text-sm text-white/80 truncate">{ev.description}</div>
-                )}
-                <Link
-                  to="/calendario"
-                  className="mt-4 inline-flex items-center gap-2 rounded-lg bg-white/10 hover:bg-white/20 transition-colors text-white text-sm font-medium px-3 py-2"
-                >
-                  Ver no calendário <ArrowRight className="size-4" />
-                </Link>
+                <span className="shrink-0 text-xs font-medium px-2.5 py-1 rounded-md bg-white/20 text-white">
+                  {spotlightInLabel(it.start, rawNow)}
+                </span>
               </div>
-            )
-          })}
-        </div>
-      )}
+            </div>
+          )
+        })}
+      </div>
     </section>
   )
 }
