@@ -1,17 +1,19 @@
 import { useState, useMemo } from 'react'
-import { AlertTriangle, CheckCircle2, Trophy, RefreshCw } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Trophy, RefreshCw, Trash2 } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { useTasks } from '@/hooks/use-tasks'
 import { useGoals } from '@/hooks/use-goals'
 import { useEvents } from '@/hooks/use-events'
-import { retryMissedTask } from '@/lib/tasks'
+import { useMediaQuery } from '@/hooks/use-media-query'
+import { retryMissedTask, deleteTask, deleteAllMissedTasks, completedWeekGroupKeys, weekTaskGroupKey } from '@/lib/tasks'
 import { formatTz, toTz, ymd, weekEndOf } from '@/lib/tz'
 import { toast } from 'sonner'
 
 export function HistoryButton() {
   const [open, setOpen] = useState(false)
+  const isMobile = useMediaQuery('(max-width: 768px)')
   const { data: tasks = [] } = useTasks()
   const { data: goals = [] } = useGoals(2026)
   const { data: events = [] } = useEvents()
@@ -19,15 +21,20 @@ export function HistoryButton() {
   const now = toTz(new Date())
   const todayStr = ymd(now)
 
+  // A scope='week' task is one row per day (see lib/tasks.ts) — if any sibling row
+  // was completed, the rest shouldn't show up as "missed" once the week ends.
+  const completedWeekGroups = useMemo(() => completedWeekGroupKeys(tasks), [tasks])
+
   const missedTasks = useMemo(
     () =>
       tasks.filter((t) => {
         if (t.completed) return false
+        if (t.scope === 'week' && completedWeekGroups.has(weekTaskGroupKey(t))) return false
         if (t.missed) return true
         if (t.scope === 'week') return weekEndOf(t.scheduled_date) < todayStr
         return t.scheduled_date < todayStr
       }),
-    [tasks, todayStr],
+    [tasks, todayStr, completedWeekGroups],
   )
   const missedEvents = useMemo(
     () => events.filter((ev) => !ev.completed && formatTz(ev.end, 'yyyy-MM-dd') < todayStr),
@@ -50,6 +57,26 @@ export function HistoryButton() {
   )
 
   const totalMissed = missedTasks.length + missedEvents.length
+
+  function handleDeleteTask(id: string) {
+    deleteTask(id)
+      .then(() => toast.success('Tarefa excluída'))
+      .catch(() => toast.error('Erro ao excluir'))
+  }
+
+  function handleClearAllMissed() {
+    if (missedTasks.length === 0) return
+    const confirmed = window.confirm(
+      `Tem certeza? Isso vai excluir todas as ${missedTasks.length} tarefas perdidas.`,
+    )
+    if (!confirmed) return
+    deleteAllMissedTasks()
+      .then(() => {
+        toast.success('Tarefas perdidas excluídas')
+        setOpen(false)
+      })
+      .catch(() => toast.error('Erro ao excluir'))
+  }
 
   return (
     <>
@@ -96,11 +123,23 @@ export function HistoryButton() {
                   Nenhum item perdido.
                 </p>
               ) : (
-                <ul className="flex flex-col gap-2 max-h-[60vh] overflow-y-auto mt-2">
+                <>
+                  {missedTasks.length > 0 && (
+                    <div className="flex justify-end mt-2">
+                      <button
+                        type="button"
+                        onClick={handleClearAllMissed}
+                        className="inline-flex items-center gap-1 text-xs text-rose-600 dark:text-rose-400 hover:text-rose-700 dark:hover:text-rose-300 transition-colors"
+                      >
+                        <Trash2 className="size-3.5" /> Limpar tudo
+                      </button>
+                    </div>
+                  )}
+                  <ul className="flex flex-col gap-2 max-h-[60vh] overflow-y-auto mt-2">
                   {missedTasks.map((t) => (
                     <li
                       key={t.id}
-                      className="flex flex-col gap-1.5 rounded-xl bg-rose-500/10 border border-rose-500/20 px-3 py-2.5"
+                      className="group flex flex-col gap-1.5 rounded-xl bg-rose-500/10 border border-rose-500/20 px-3 py-2.5"
                     >
                       <div className="flex items-start gap-2">
                         <AlertTriangle className="size-4 text-rose-500 shrink-0 mt-0.5" />
@@ -128,6 +167,16 @@ export function HistoryButton() {
                         >
                           <RefreshCw className="size-3" /> Refazer
                         </Button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteTask(t.id)}
+                          aria-label="Excluir tarefa"
+                          className={`shrink-0 text-rose-500/70 hover:text-rose-600 transition-opacity ${
+                            isMobile ? '' : 'opacity-0 group-hover:opacity-100'
+                          }`}
+                        >
+                          <Trash2 className="size-3.5" />
+                        </button>
                       </div>
                     </li>
                   ))}
@@ -150,7 +199,8 @@ export function HistoryButton() {
                       </div>
                     </li>
                   ))}
-                </ul>
+                  </ul>
+                </>
               )}
             </TabsContent>
 

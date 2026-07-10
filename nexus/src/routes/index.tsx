@@ -50,6 +50,9 @@ import {
   createTask,
   createRecurringTasks,
   markMissedTasks,
+  completedWeekGroupKeys,
+  isTaskEffectivelyDone,
+  weekTaskGroupKey,
   type Task,
   type TaskPriority,
 } from '@/lib/tasks'
@@ -158,9 +161,13 @@ function HomePage() {
     [events, todayStr],
   )
 
+  // A scope='week' task is one row per day (see lib/tasks.ts) — completing any one
+  // of those sibling rows should count/hide the whole group, not just that row.
+  const completedWeekGroups = useMemo(() => completedWeekGroupKeys(tasks), [tasks])
+
   const totalToday = todayTasks.length + todayEvents.length
   const completedToday =
-    todayTasks.filter((t) => t.completed).length +
+    todayTasks.filter((t) => isTaskEffectivelyDone(t, completedWeekGroups)).length +
     todayEvents.filter((ev) => ev.end < rawNow).length
 
   const importantToday = useMemo(
@@ -188,6 +195,7 @@ function HomePage() {
     }
     for (const t of todayTasks) {
       if (!t.scheduled_time) continue
+      if (isTaskEffectivelyDone(t, completedWeekGroups)) continue
       items.push({ kind: 'task', id: t.id, start: combineZonedDayAndTime(now, t.scheduled_time.slice(0, 5)), title: t.title })
     }
     for (const h of habits) {
@@ -198,7 +206,7 @@ function HomePage() {
     }
     items.sort((a, b) => a.start.getTime() - b.start.getTime())
     return items
-  }, [todayEvents, todayTasks, habits, now])
+  }, [todayEvents, todayTasks, habits, now, completedWeekGroups])
 
   const spotlightMainItem = useMemo(() => {
     const upcoming = todaySpotlightItems.filter((it) => spotlightEndTime(it).getTime() >= rawNow.getTime())
@@ -227,7 +235,10 @@ function HomePage() {
   useEffect(() => {
     const overdue = tasks.filter((t) => {
       if (t.completed || t.missed) return false
-      if (t.scope === 'week') return weekEndOf(t.scheduled_date) < todayStr
+      if (t.scope === 'week') {
+        if (completedWeekGroups.has(weekTaskGroupKey(t))) return false
+        return weekEndOf(t.scheduled_date) < todayStr
+      }
       return t.scheduled_date < todayStr
     })
     if (overdue.length > 0) {
@@ -235,7 +246,7 @@ function HomePage() {
         () => toast.error('Erro ao registrar tarefas perdidas'),
       )
     }
-  }, [tasks, todayStr])
+  }, [tasks, todayStr, completedWeekGroups])
 
   const [period, setPeriod] = useState<Period>('day')
   const range = useMemo(() => periodRange(now, period), [now, period])
@@ -243,6 +254,9 @@ function HomePage() {
   const timelineItems: TimelineItem[] = useMemo(() => {
     const items: TimelineItem[] = []
     for (const t of tasks) {
+      // A not-yet-completed sibling of an already-completed week task: hide it
+      // immediately instead of leaving it as a stale pending duplicate.
+      if (!t.completed && t.scope === 'week' && completedWeekGroups.has(weekTaskGroupKey(t))) continue
       const isOverdue = t.scope === 'week'
         ? weekEndOf(t.scheduled_date) < todayStr
         : t.scheduled_date < todayStr
@@ -283,7 +297,7 @@ function HomePage() {
       return a.sortKey.localeCompare(b.sortKey)
     })
     return items
-  }, [tasks, events, allDayEvents, range, todayStr])
+  }, [tasks, events, allDayEvents, range, todayStr, completedWeekGroups])
 
   const grouped = useMemo(() => {
     const map = new Map<string, TimelineItem[]>()
