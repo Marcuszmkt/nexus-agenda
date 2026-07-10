@@ -1,13 +1,22 @@
 import { supabase } from '@/integrations/supabase/client'
 import { queryClient } from '@/lib/query-client'
 
+export type HabitCategory = 'workout' | 'nutrition' | 'general'
+
 export type Habit = {
   id: string
   title: string
   icon: string
   days_of_week: number[]
   scheduled_time: string | null
+  category: HabitCategory
   created_at: string
+}
+
+export function categoryForIcon(icon: string): HabitCategory {
+  if (icon === '🏋️') return 'workout'
+  if (icon === '🥗') return 'nutrition'
+  return 'general'
 }
 
 export type HabitLog = {
@@ -39,6 +48,7 @@ export async function createHabit(input: {
     icon: input.icon,
     days_of_week: input.days_of_week,
     scheduled_time: input.scheduled_time ?? null,
+    category: categoryForIcon(input.icon),
   })
   if (error) throw error
   queryClient.invalidateQueries({ queryKey: ['habits'] })
@@ -60,6 +70,7 @@ export async function updateHabit(
       icon: input.icon,
       days_of_week: input.days_of_week,
       scheduled_time: input.scheduled_time ?? null,
+      category: categoryForIcon(input.icon),
     })
     .eq('id', id)
   if (error) throw error
@@ -77,6 +88,16 @@ export async function fetchHabitLogs(month: number, year: number): Promise<Habit
   const from = `${year}-${String(month).padStart(2, '0')}-01`
   const lastDay = new Date(year, month, 0).getDate()
   const to = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
+  const { data, error } = await supabase
+    .from('habit_logs')
+    .select('*')
+    .gte('log_date', from)
+    .lte('log_date', to)
+  if (error) throw error
+  return data as HabitLog[]
+}
+
+export async function fetchHabitLogsRange(from: string, to: string): Promise<HabitLog[]> {
   const { data, error } = await supabase
     .from('habit_logs')
     .select('*')

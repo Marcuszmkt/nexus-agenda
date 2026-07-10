@@ -356,11 +356,7 @@ function HomePage() {
   return (
     <AppShell>
       <div className="h-full overflow-y-auto" style={{ background: 'linear-gradient(135deg, var(--color-background) 0%, var(--color-background) 70%, oklch(0.5 0.25 293 / 5%) 100%)' }}>
-        <div
-          className={`mx-auto px-4 sm:px-6 py-6 sm:py-10 flex flex-col gap-6 transition-[max-width] duration-300 ${
-            nextEventCardExpanded ? 'max-w-[1780px]' : 'max-w-7xl'
-          }`}
-        >
+        <div className="w-full px-6 sm:px-8 py-6 sm:py-10 flex flex-col gap-6">
 
           {showBanner && !bannerDismissed && (
             <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 flex items-center justify-between gap-3 flex-wrap">

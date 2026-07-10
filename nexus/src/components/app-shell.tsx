@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { Link, useRouterState } from '@tanstack/react-router'
-import { Calendar as CalendarIcon, Home as HomeIcon, Clock, Zap, Flame } from 'lucide-react'
+import { Calendar as CalendarIcon, Home as HomeIcon, Clock, Flame } from 'lucide-react'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { HistoryButton } from '@/components/history-button'
 import { TZ } from '@/lib/tz'
@@ -11,13 +11,32 @@ const NAV_TABS = [
   { to: '/streak', label: 'Streak', icon: Flame },
 ] as const
 
-const ACCENT = {
-  purple: { color: '#7C3AED', glow: 'rgba(124, 58, 237, 0.5)' },
-  emerald: { color: '#10B981', glow: 'rgba(16, 185, 129, 0.5)' },
+const ACCENT_PURPLE = '#7C3AED'
+const ACCENT_EMERALD = '#10B981'
+
+function isStreakPath(pathname: string): boolean {
+  return pathname.startsWith('/streak')
 }
 
-function accentForPath(pathname: string) {
-  return pathname.startsWith('/streak') ? ACCENT.emerald : ACCENT.purple
+function accentForPath(pathname: string): string {
+  return isStreakPath(pathname) ? ACCENT_EMERALD : ACCENT_PURPLE
+}
+
+function NexusMark({ isEmerald }: { isEmerald: boolean }) {
+  return (
+    <span className="relative inline-block h-8 w-8 shrink-0">
+      <img
+        src="/n-purple.png"
+        alt=""
+        className={`absolute inset-0 size-full object-contain transition-opacity duration-300 ${isEmerald ? 'opacity-0' : 'opacity-100'}`}
+      />
+      <img
+        src="/n-emerald.png"
+        alt=""
+        className={`absolute inset-0 size-full object-contain transition-opacity duration-300 ${isEmerald ? 'opacity-100' : 'opacity-0'}`}
+      />
+    </span>
+  )
 }
 
 function isTabActive(pathname: string, to: string): boolean {
@@ -38,13 +57,8 @@ export function AppShell({
     <div className="h-screen w-full flex flex-col bg-background text-foreground">
       <header className="relative flex items-center gap-3 sm:gap-6 border-b border-border px-3 sm:px-6 py-3 shrink-0 bg-card/80 backdrop-blur-sm dark:bg-[#080808]">
         <div className="flex items-center gap-2">
-          <div
-            className="size-9 rounded-xl text-white inline-flex items-center justify-center transition-colors duration-300"
-            style={{ backgroundColor: accent.color, boxShadow: `0 0 12px ${accent.glow}` }}
-          >
-            <Zap className="size-5" />
-          </div>
-          <h1 className="hidden sm:block text-base font-bold tracking-tight text-foreground">
+          <NexusMark isEmerald={isStreakPath(pathname)} />
+          <h1 className="hidden sm:block text-base font-semibold tracking-tight text-foreground">
             Nexus
           </h1>
         </div>
@@ -60,7 +74,7 @@ export function AppShell({
                   className={`pb-0.5 border-b-2 font-medium transition-colors duration-200 ${
                     active ? '' : 'border-transparent text-muted-foreground hover:text-foreground/80'
                   }`}
-                  style={active ? { color: accent.color, borderColor: accent.color } : undefined}
+                  style={active ? { color: accent, borderColor: accent } : undefined}
                 >
                   {t.label}
                 </Link>
@@ -92,7 +106,7 @@ export function AppShell({
               key={t.to}
               to={t.to}
               className="flex flex-col items-center gap-0.5 px-3 py-1 text-[11px] font-medium transition-colors duration-200"
-              style={{ color: active ? accent.color : undefined }}
+              style={{ color: active ? accent : undefined }}
             >
               <t.icon className={`size-5 ${active ? '' : 'text-muted-foreground'}`} />
               <span className={active ? '' : 'text-muted-foreground'}>{t.label}</span>
